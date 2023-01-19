@@ -930,6 +930,83 @@ class Orbit:
             out.__dict__[kw]= misc_kwargs[kw]
         return out
 
+    @classmethod
+    def from_orbit_list(cls, orbits_list, orbit_combine_fn=None):
+        """
+        given a list of Orbits, each containing multiple objects, merge all the orbits into a single Orbit, without having to redo any integration
+        """
+
+        # first, check that all attributes exist in all orbits
+        attribute_list = ["vxvv", "shape", "_roSet", "_voSet", "_ro", "_vo", "_zo", "_solarmotion"]
+        for orbit in orbits_list:
+            for attribute in attribute_list:
+                if not hasattr(orbit, attribute):
+                    raise AttributeError("Orbit instance does not have attribute {}".format(attribute))
+
+        # if the first orbit has an orbit attribute, then all orbits should have an orbit attribute
+        integration_attribute_list = ["t", "_integrate_t_asQuantity", "orbit", "_pot"]
+        # for each integration attribute, if it exists in any orbit, it should exist in all orbits
+        for attribute in integration_attribute_list:
+            if any([hasattr(orbit, attribute) for orbit in orbits_list]):
+                for orbit in orbits_list:
+                    if not hasattr(orbit, attribute):
+                        raise AttributeError("Orbit instance does not have attribute {}".format(attribute))
+
+        optional_attribute_list = ["_name"]
+        # for each optional attribute, if it exists in any orbit, it should exist in all orbits
+        for attribute in optional_attribute_list:
+            if any([hasattr(orbit, attribute) for orbit in orbits_list]):
+                for orbit in orbits_list:
+                    if not hasattr(orbit, attribute):
+                        raise AttributeError("Orbit instance does not have attribute {}".format(attribute))
+
+        # merge the orbits
+        vxvv = numpy.concatenate([orbits_list[i].vxvv for i in range(len(orbits_list))])
+
+        # create the new Orbit instance
+        out = cls(vxvv=vxvv)
+
+        # transfer the new combined shape. the first dimension is the sum of the first dimensions of the individual Orbits, and the rest of the dimensions are the same as the first Orbit
+        out.shape = (sum([orbits_list[i].shape[0] for i in range(len(orbits_list))]),) + orbits_list[0].shape[1:]
+
+        # transfer the physical attributes
+        physical_kwargs= {}
+        physical_kwargs['_roSet']= orbits_list[0]._roSet
+        physical_kwargs['_voSet']= orbits_list[0]._voSet
+        physical_kwargs['_ro']= orbits_list[0]._ro
+        physical_kwargs['_vo']= orbits_list[0]._vo
+        physical_kwargs['_zo']= orbits_list[0]._zo
+        physical_kwargs['_solarmotion']= orbits_list[0]._solarmotion
+
+        for kw in physical_kwargs:
+            out.__dict__[kw]= physical_kwargs[kw]
+
+        # transfer all attributes related to integration
+        if hasattr(orbits_list[0],'orbit'):
+            integrate_kwargs = {}
+            integrate_kwargs['t'] = orbits_list[0].t
+            integrate_kwargs['_integrate_t_asQuantity'] = orbits_list[0]._integrate_t_asQuantity
+            if orbit_combine_fn and callable(orbit_combine_fn):
+                integrate_kwargs['orbit'] = orbit_combine_fn([orbits_list[i].orbit for i in range(len(orbits_list))])
+            else:
+                integrate_kwargs['orbit'] = numpy.concatenate([orbits_list[i].orbit for i in range(len(orbits_list))])
+            integrate_kwargs['_pot'] = orbits_list[0]._pot
+
+            for kw in integrate_kwargs:
+                out.__dict__[kw]= integrate_kwargs[kw]
+
+        # transfer miscellaneous attributes
+        misc_kwargs= {}
+        if hasattr(orbits_list[0],'_name'):
+            misc_kwargs['_name']= orbits_list[0]._name
+
+        for kw in misc_kwargs:
+            out.__dict__[kw]= misc_kwargs[kw]
+
+        # return new Orbit
+        return out
+
+
     def reshape(self,newshape):
         """
         NAME:
